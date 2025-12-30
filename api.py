@@ -26,30 +26,36 @@ def verify(request: Request):
     return PlainTextResponse(content="Verification failed", status_code=403)
 
 @app.post("/webhook")
-def incoming_msg(request: Request):
-    print("Message Recieved")
-    params=request.query_params
-    payload=params.get("JSON_PAYLOAD")
-    key=os.getenv("ACCESS_TOKEN")
-    hash_value=params.get("SHA256_PAYLOAD_HASH")
-    payloadb=json.dumps(payload)
- 
-    key=key.encode("utf-8")
-    payloadb=payloadb.encode("utf-8")
-    hmac_hash=hmac.new(key,msg=payloadb,digestmod=hashlib.sha256).hexdigest()
+async def incoming_msg(request: Request):
+    await verify_signature(request)
+
+    payload = await request.json()
 
     message = payload["entry"][0]["changes"][0]["value"]["messages"][0]
     sender = message["from"]
     text = message["text"]["body"]
     print(f"Sender: {sender}\n")
     print(f"Message: {text}\n")
+    
 
-    valid=hmac.compare_digest(hmac_hash,hash_value)
+async def verify_signature(request: Request):
+    signature = request.headers.get("X-Hub-Signature-256")
 
-    if(valid):
-        return PlainTextResponse(content="Message is Valid",status_code=200)
-    else:
-        return PlainTextResponse(content="Message is Invalid",status_code=400)
+    if not signature:
+        return PlainTextResponse(content="Signature Invalid",status_code=403)
+
+    received_hash = signature.replace("sha256=", "")
+
+    body = await request.body()
+
+    expected_hash = hmac.new(
+        key=os.getenv("ACCESS_TOKEN").encode("utf-8"),
+        msg=body,
+        digestmod=hashlib.sha256
+    ).hexdigest()
+
+    if not hmac.compare_digest(expected_hash, received_hash):
+        raise PlainTextResponse(content="Signature Invalid",status_code=403)
 
 # if __name__ == "__main__":
 #     import uvicorn
