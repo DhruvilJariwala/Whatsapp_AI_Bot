@@ -36,7 +36,7 @@ async def incoming_msg(request: Request):
     text = message["text"]["body"]
     print(f"Sender: {sender}\n")
     print(f"Message: {text}\n")
-    
+
 
 async def verify_signature(request: Request):
     signature = request.headers.get("X-Hub-Signature-256")
@@ -55,7 +55,7 @@ async def verify_signature(request: Request):
     ).hexdigest()
 
     if not hmac.compare_digest(expected_hash, received_hash):
-        raise PlainTextResponse(content="Signature Invalid",status_code=403)
+        return PlainTextResponse(content="Signature Invalid",status_code=403)
 
 # if __name__ == "__main__":
 #     import uvicorn
