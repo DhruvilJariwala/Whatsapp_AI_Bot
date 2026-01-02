@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 import os
 load_dotenv()
 
-r= redis.Redis(host='localhost', port=6379,db=0,decode_responses=True)
+# r= redis.Redis(host='localhost', port=6379,db=0,decode_responses=True)
 r = redis.Redis.from_url(os.getenv("REDIS_URI"))
 
 def check_state(soruce:str):
@@ -59,4 +59,3 @@ def push_to_mongo(chat_history:list[dict],reciever:str):
     finally:
         if client:
             client.close()
-
