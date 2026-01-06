@@ -125,7 +125,8 @@ def ask_ai(reciver:str,query:str,sender:str,reciver_id:str):
         generation = get_llm().invoke(chat_history)
         response = generation.content
         try:
-            requests.post(os.getenv("BASE_URL")+reciver_id+"/messages",json=msg_send(sender=sender,response=response))
+            res=requests.post(os.getenv("BASE_URL")+reciver_id+"/messages",json=msg_send(sender=sender,response=response))
+            print(res)
             print("Sucessfully Send")
         except Exception as e:
             print(f"ERROR: {e}")
@@ -144,7 +145,8 @@ def ask_ai(reciver:str,query:str,sender:str,reciver_id:str):
         generation = get_llm().invoke(hist)
         response = generation.content
         try:
-            requests.post(os.getenv("BASE_URL")+reciver_id+"/messages",json=msg_send(sender=sender,response=response))
+            res=requests.post(os.getenv("BASE_URL")+reciver_id+"/messages",json=msg_send(sender=sender,response=response))
+            print(res)
             print("Sucessfully Send")
         except Exception as e:
             print(f"ERROR: {e}")
