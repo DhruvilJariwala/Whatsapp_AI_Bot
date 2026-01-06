@@ -20,8 +20,8 @@ schema = CollectionSchema(
     description="Collection for storing text embeddings",
 )
 
-# milvus_client = MilvusClient(uri=os.getenv("ZILLIS_URI_ENDPOINT"), token=os.getenv("ZILLIS_TOKEN"), password=os.getenv("ZILLIS_PASSWORD"), db_name=os.getenv("ZILLIS_DB_NAME"))
-milvus_client = MilvusClient(uri=os.getenv("MILVUS_URI"), db_name=os.getenv("MILVUS_DB_NAME"))
+milvus_client = MilvusClient(uri=os.getenv("ZILLIS_URI_ENDPOINT"), token=os.getenv("ZILLIS_TOKEN"), db_name=os.getenv("ZILLIS_DB_NAME"))
+# milvus_client = MilvusClient(uri=os.getenv("MILVUS_URI"), db_name=os.getenv("MILVUS_DB_NAME"))
                 
 def create_collection(collection: str) -> dict:
     index_params = milvus_client.prepare_index_params()
@@ -44,7 +44,7 @@ def create_collection(collection: str) -> dict:
         return {"status": 400, "message": str(e)}
 
 def insert(pnumber:str,file_name: str,  file_type: str, file) -> dict | None:
-    collection="User_data"
+    collection="user_data"
     chunks = extractor(file=file, type=file_type)
     print("length of chunks:", len(chunks))
     current_time = time.time()
@@ -73,7 +73,7 @@ def insert(pnumber:str,file_name: str,  file_type: str, file) -> dict | None:
     return response if response else None
 
 def search(query: str) -> str:
-    collection="User_data"
+    collection="user_data"
     search_query = search_embeddings(query=query)
 
     search_params = {
@@ -82,7 +82,7 @@ def search(query: str) -> str:
         "metric_type":"COSINE",
         "ef":512,
         "M":80,
-        "radius": 0.6
+        "radius": 0.5
     }
     context=""
     

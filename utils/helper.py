@@ -7,7 +7,7 @@ import os
 load_dotenv()
 
 # r= redis.Redis(host='localhost', port=6379,db=0,decode_responses=True)
-r = redis.Redis.from_url(os.getenv("REDIS_URI"))
+r = redis.Redis.from_url(os.getenv("REDIS_URI"),decode_responses=True)
 
 def check_state(soruce:str):
     res=r.hget(soruce,"state")
@@ -28,9 +28,6 @@ def initial_history(number:str,chat_history:list[dict]):
 
 def append_history(number:str,chat_history:list[dict],counter:int):
     response=r.hgetall(number)
-    history=json.loads(response.get("history")) 
-    for hist in history:
-        chat_history.append(hist)
     chat_history=json.dumps(chat_history)
     res={"state":response['state'],"history":chat_history,"counter":counter}
     r.hset(number,mapping=res)
@@ -38,9 +35,12 @@ def append_history(number:str,chat_history:list[dict],counter:int):
 def get_counter(number:str):
     res=r.hget(number,"counter")
     if res is None:
-        r.hset(number,mapping={"counter":2})
+        r.hset(number,mapping={"counter":1})
     resp= r.hget(number,"counter")
     return resp
+
+def change_state(number:str):
+    r.hset(number,"state","Human")
 
 def push_to_mongo(chat_history:list[dict],reciever:str):
     connection_string = os.getenv("MONGODB_URI")
@@ -59,3 +59,14 @@ def push_to_mongo(chat_history:list[dict],reciever:str):
     finally:
         if client:
             client.close()
+
+def msg_send(sender:str,response:str):
+    return {
+  "messaging_product": "whatsapp",
+  "recipient_type": "individual",
+  "to": sender,
+  "type": "text",
+  "text": {
+    "body": response
+  }
+}

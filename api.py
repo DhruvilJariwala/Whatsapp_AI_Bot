@@ -7,11 +7,16 @@ import os
 import json
 from collections import deque
 import datetime
+import copy
+import threading
+import queue
+import requests
 
-from utils.llms import get_llm
+from utils.llms import get_llm,llm_with_tool
 from utils.milvs_services import insert,search
-from utils.helper import check_state,check_history,initial_history,append_history,push_to_mongo,get_counter
-from utils.prompt import response_prompt
+from utils.helper import check_state,check_history,initial_history,append_history,push_to_mongo,get_counter,change_state,msg_send
+from utils.prompt import response_prompt,tool_prompt
+from utils.tool import switch_state
 
 app=FastAPI()
 
@@ -54,14 +59,24 @@ async def incoming_msg(request: Request):
     payload = await request.json()
 
     reciever_number=payload["entry"][0]["changes"][0]["value"]["metadata"]["display_phone_number"]
+    reciever_number_id=payload["entry"][0]["changes"][0]["value"]["metadata"]["phone_number_id"]
     message = payload["entry"][0]["changes"][0]["value"]["messages"][0]
     sender = message["from"]
     text = message["text"]["body"]
     print(f"Sender: {sender}\n")
     print(f"Message: {text}\n")
-    status=check_state(source=sender)
+    # switch_tool=llm_with_tool(switch_state) 
+    # sprompt=tool_prompt(text)
+    # switch_prompt=[{"role":"user","content":sprompt}]
+    # switch_res=switch_tool.invoke(switch_prompt)
+    # if(switch_res.tool_calls):
+    #     if(switch_res.tool_calls[0]['name']=="switch_state"):
+    #         change_state(reciever_number+"_@_"+sender)
+    status=check_state(reciever_number+"_@_"+sender)
     if status=="AI":
-        ask_ai(reciever_number,query=text,sender=sender)
+        ask_ai(reciever_number,query=text,sender=sender,reciver_id=reciever_number_id)
+    # else:
+        # human()
     return PlainTextResponse(status_code=200)
 
 
@@ -84,8 +99,20 @@ async def verify_signature(request: Request):
     if not hmac.compare_digest(expected_hash, received_hash):
         return PlainTextResponse(content="Signature Invalid",status_code=403)
 
-def ask_ai(reciver:str,query:str,sender:str):
-    res=check_history(sender+"_@_"+reciver)
+mongo_queue = queue.Queue()
+
+def mongo_worker():
+    while True:
+        history, receiver = mongo_queue.get()
+        try:
+            push_to_mongo(history, receiver)
+        finally:
+            mongo_queue.task_done()
+
+threading.Thread(target=mongo_worker, daemon=True).start()
+
+def ask_ai(reciver:str,query:str,sender:str,reciver_id:str):
+    res=check_history(reciver+"_@_"+sender)
     if res is None:
         context=search(query)
         prompt=response_prompt(context,query)
@@ -93,28 +120,30 @@ def ask_ai(reciver:str,query:str,sender:str):
         generation = get_llm().invoke(chat_history)
         response = generation.content
         chat_history.pop()
-        chat_history.append({"role":"user","content":query,"timestamp":str(datetime.datetime.now())})                        
-        chat_history.append({"role":"assistant","content":response,"timestamp":str(datetime.datetime.now())})
-        initial_history(sender+"_@_"+reciver,chat_history)
+        chat_history.append({"user":query,"assistant":response,"timestamp":str(datetime.datetime.now()),"SenderID":sender,"answeredby":check_state(reciver+"_@_"+sender)})                        
+        initial_history(reciver+"_@_"+sender,chat_history)
     else:
         history=json.loads(res)
-        keys_to_keep=["role","content"]
-        hist=[{key: d[key] for key in keys_to_keep}for d in history]
+        hist=[]
+        for items in history:
+            hist.append({"role":"user","content":items["user"]})
+            hist.append({"role":"assistant","content":items["assistant"]})
         context=search(query)
         prompt=response_prompt(context,query)
         hist.append({"role":"user","content":prompt})
         generation = get_llm().invoke(hist)
         response = generation.content
-        history=deque(history,20)
-        history.append({"role":"user","content":query,"timestamp":str(datetime.datetime.now())})
-        history.append({"role":"assistant","content":response,"timestamp":str(datetime.datetime.now())})
-        counter=int(get_counter(sender+"_@_"+reciver))
-        counter+=2
-        if counter==20:
-            history.append({"senderID":sender})
-            history.append({"answeredby":check_state(sender+"_@_"+reciver)})
-            push_to_mongo(history,reciver)
-            history.pop()
-            history.pop()
+        try:
+            requests.post(os.getenv("BASE_URL")+reciver_id+"/messages",data=msg_send(sender=sender,response=response))
+            print("Sucessfully Send")
+        except Exception as e:
+            print(f"ERROR: {e}")
+        history=deque(history,10)
+        history.append({"user":query,"assistant":response,"timestamp":str(datetime.datetime.now()),"SenderID":sender,"answeredby":check_state(reciver+"_@_"+sender)})                        
+        counter=int(get_counter(reciver+"_@_"+sender))
+        counter+=1
+        if counter==10:
+            mongo_history=copy.deepcopy(history)
+            mongo_queue.put((mongo_history,reciver))
             counter=0
-        append_history(sender+"_@_"+reciver,list(history),counter=counter)
+        append_history(reciver+"_@_"+sender,list(history),counter=counter)
