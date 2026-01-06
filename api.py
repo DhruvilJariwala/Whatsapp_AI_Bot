@@ -127,11 +127,11 @@ def ask_ai(reciver:str,query:str,sender:str,reciver_id:str):
         generation = get_llm().invoke(chat_history)
         response = generation.content
         try:
-            res=requests.post(os.getenv("BASE_URL")+reciver_id+"/messages",json=msg_send(sender=sender,response=response),headers={
-                "Authorization": f"Bearer {os.getenv("ACCESS_TOKEN")}",
-                "Content-Type": "application/json"
+            res=requests.post(os.getenv('BASE_URL')+reciver_id+"/messages",json=msg_send(sender=sender,response=response),headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {os.getenv('ACCESS_TOKEN')}"
             })
-            print(res)
+            print(res.json())
             print("Sucessfully Send")
         except Exception as e:
             print(f"ERROR: {e}")
@@ -150,11 +150,11 @@ def ask_ai(reciver:str,query:str,sender:str,reciver_id:str):
         generation = get_llm().invoke(hist)
         response = generation.content
         try:
-            res=requests.post(os.getenv("BASE_URL")+reciver_id+"/messages",json=msg_send(sender=sender,response=response),headers={
-                "Authorization": f"Bearer {os.getenv("ACCESS_TOKEN")}",
-                "Content-Type": "application/json"
+            res=requests.post(url=f"{os.getenv('BASE_URL')}{reciver_id}/messages",json=msg_send(sender=sender,response=response),headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {os.getenv('ACCESS_TOKEN')}"
             })
-            print(res)
+            print(res.json())
             print("Sucessfully Send")
         except Exception as e:
             print(f"ERROR: {e}")
