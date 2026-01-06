@@ -11,6 +11,7 @@ import copy
 import threading
 import queue
 import requests
+from dotenv import load_dotenv
 
 from utils.llms import get_llm,llm_with_tool
 from utils.milvs_services import insert,search
@@ -18,6 +19,7 @@ from utils.helper import check_state,check_history,initial_history,append_histor
 from utils.prompt import response_prompt,tool_prompt
 from utils.tool import switch_state
 
+load_dotenv()
 app=FastAPI()
 
 app.add_middleware(
@@ -125,7 +127,10 @@ def ask_ai(reciver:str,query:str,sender:str,reciver_id:str):
         generation = get_llm().invoke(chat_history)
         response = generation.content
         try:
-            res=requests.post(os.getenv("BASE_URL")+reciver_id+"/messages",json=msg_send(sender=sender,response=response))
+            res=requests.post(os.getenv("BASE_URL")+reciver_id+"/messages",json=msg_send(sender=sender,response=response),headers={
+                "Authorization": f"Bearer {os.getenv("ACCESS_TOKEN")}",
+                "Content-Type": "application/json"
+            })
             print(res)
             print("Sucessfully Send")
         except Exception as e:
@@ -145,7 +150,10 @@ def ask_ai(reciver:str,query:str,sender:str,reciver_id:str):
         generation = get_llm().invoke(hist)
         response = generation.content
         try:
-            res=requests.post(os.getenv("BASE_URL")+reciver_id+"/messages",json=msg_send(sender=sender,response=response))
+            res=requests.post(os.getenv("BASE_URL")+reciver_id+"/messages",json=msg_send(sender=sender,response=response),headers={
+                "Authorization": f"Bearer {os.getenv("ACCESS_TOKEN")}",
+                "Content-Type": "application/json"
+            })
             print(res)
             print("Sucessfully Send")
         except Exception as e:
