@@ -57,12 +57,17 @@ async def incoming_msg(request: Request):
     await verify_signature(request)
 
     payload = await request.json()
-
-    reciever_number=payload["entry"][0]["changes"][0]["value"]["metadata"]["display_phone_number"]
-    reciever_number_id=payload["entry"][0]["changes"][0]["value"]["metadata"]["phone_number_id"]
-    message = payload["entry"][0]["changes"][0]["value"]["messages"][0]
-    sender = message["from"]
-    text = message["text"]["body"]
+    print(payload)
+    entry = payload.get("entry", [{}])[0]
+    changes = entry.get("changes", [{}])[0]
+    value = changes.get("value", {})
+    metadata = value.get("metadata", {})
+    receiver_number = metadata.get("display_phone_number")
+    receiver_number_id = metadata.get("phone_number_id")
+    messages = value.get("messages", [{}])
+    message = messages[0] if messages else {}
+    sender = message.get("from")
+    text = (message.get("text", {}).get("body"))
     print(f"Sender: {sender}\n")
     print(f"Message: {text}\n")
     # switch_tool=llm_with_tool(switch_state) 
@@ -72,9 +77,9 @@ async def incoming_msg(request: Request):
     # if(switch_res.tool_calls):
     #     if(switch_res.tool_calls[0]['name']=="switch_state"):
     #         change_state(reciever_number+"_@_"+sender)
-    status=check_state(reciever_number+"_@_"+sender)
+    status=check_state(receiver_number+"_@_"+sender)
     if status=="AI":
-        ask_ai(reciever_number,query=text,sender=sender,reciver_id=reciever_number_id)
+        ask_ai(receiver_number,query=text,sender=sender,reciver_id=receiver_number_id)
     # else:
         # human()
     return PlainTextResponse(status_code=200)
@@ -119,6 +124,11 @@ def ask_ai(reciver:str,query:str,sender:str,reciver_id:str):
         chat_history=[{"role":"user","content":prompt}]
         generation = get_llm().invoke(chat_history)
         response = generation.content
+        try:
+            requests.post(os.getenv("BASE_URL")+reciver_id+"/messages",data=msg_send(sender=sender,response=response))
+            print("Sucessfully Send")
+        except Exception as e:
+            print(f"ERROR: {e}")
         chat_history.pop()
         chat_history.append({"user":query,"assistant":response,"timestamp":str(datetime.datetime.now()),"SenderID":sender,"answeredby":check_state(reciver+"_@_"+sender)})                        
         initial_history(reciver+"_@_"+sender,chat_history)
