@@ -79,7 +79,7 @@ async def incoming_msg(request: Request):
     # if(switch_res.tool_calls):
     #     if(switch_res.tool_calls[0]['name']=="switch_state"):
     #         change_state(reciever_number+"_@_"+sender)
-    status=check_state(receiver_number+"_@_"+sender)
+    status=check_state(f"{receiver_number}_@_{sender}")
     if status=="AI":
         ask_ai(receiver_number,query=text,sender=sender,reciver_id=receiver_number_id)
     # else:
@@ -119,7 +119,7 @@ def mongo_worker():
 threading.Thread(target=mongo_worker, daemon=True).start()
 
 def ask_ai(reciver:str,query:str,sender:str,reciver_id:str):
-    res=check_history(reciver+"_@_"+sender)
+    res=check_history(f"{reciver}_@_{sender}")
     if res is None:
         context=search(query)
         prompt=response_prompt(context,query)
@@ -136,8 +136,8 @@ def ask_ai(reciver:str,query:str,sender:str,reciver_id:str):
         except Exception as e:
             print(f"ERROR: {e}")
         chat_history.pop()
-        chat_history.append({"user":query,"assistant":response,"timestamp":str(datetime.datetime.now()),"SenderID":sender,"answeredby":check_state(reciver+"_@_"+sender)})                        
-        initial_history(reciver+"_@_"+sender,chat_history)
+        chat_history.append({"user":query,"assistant":response,"timestamp":str(datetime.datetime.now()),"SenderID":sender,"answeredby":check_state(f"{reciver}_@_{sender}")})                        
+        initial_history(f"{reciver}_@_{sender}",chat_history)
     else:
         history=json.loads(res)
         hist=[]
@@ -159,11 +159,11 @@ def ask_ai(reciver:str,query:str,sender:str,reciver_id:str):
         except Exception as e:
             print(f"ERROR: {e}")
         history=deque(history,10)
-        history.append({"user":query,"assistant":response,"timestamp":str(datetime.datetime.now()),"SenderID":sender,"answeredby":check_state(reciver+"_@_"+sender)})                        
-        counter=int(get_counter(reciver+"_@_"+sender))
+        history.append({"user":query,"assistant":response,"timestamp":str(datetime.datetime.now()),"SenderID":sender,"answeredby":check_state(f"{reciver}_@_{sender}")})                        
+        counter=int(get_counter(f"{reciver}_@_{sender}"))
         counter+=1
         if counter==10:
             mongo_history=copy.deepcopy(history)
             mongo_queue.put((mongo_history,reciver))
             counter=0
-        append_history(reciver+"_@_"+sender,list(history),counter=counter)
+        append_history(f"{reciver}_@_{sender}",list(history),counter=counter)
