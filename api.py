@@ -63,20 +63,17 @@ async def incoming_msg(request: Request):
     sender=data[2]
     text=data[3]
     status=data[4]
+    status_recipient_id=data[5]
     if status:
-        print(f"Message Status:{status}")
+        print(f"Message Status:{status} recipient_id: {status_recipient_id} ")
         return PlainTextResponse(status_code=200)
     print(payload)
     print(f"Sender: {sender}")
     print(f"Message: {text}")
     tool_res=tool_calling(text,receiver_number,sender=sender)
-    if(tool_res.tool_calls):
-        if(tool_res.tool_calls[0]['name']=="switch_state"):
-            # change_state(f"{receiver_number}_@_{sender}")
-            print("Hello")
-        elif(tool_res.tool_calls[0]['name']=="followup_handler"):
-             text=tool_res.tool_calls[0]['args']['query']
-    print(f"Restructure Query:{text}")
+    if tool_res:
+        text=tool_res
+        print(f"Restructure Query:{text}")
     state=check_state(f"{receiver_number}_@_{sender}")
     if state=="AI":
         ask_ai(receiver_number,query=text,sender=sender,reciver_id=receiver_number_id)

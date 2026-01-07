@@ -92,7 +92,15 @@ def tool_calling(msg:str,receiver:str,sender:str):
             tool_his.append({"role":"assistant","content":items["assistant"]})
         tool_his.append({"role":"user","content":sprompt})
     tool_res=tool.invoke(tool_his)
-    return tool_res
+    if(tool_res.tool_calls):
+        if(tool_res.tool_calls[0]['name']=="switch_state"):
+            # change_state(f"{receiver_number}_@_{sender}")
+            print("Hello")
+            return None
+        elif(tool_res.tool_calls[0]['name']=="followup_handler"):
+            text=tool_res.tool_calls[0]['args']['query']
+            return text
+    return None
 
 def fetch_data(data):
     entry = data.get("entry", [{}])[0]
@@ -108,4 +116,5 @@ def fetch_data(data):
     stats=value.get("statuses", [{}])
     statuses=stats[0] if stats else {}
     status=statuses.get("status")
-    return [receiver_number,receiver_number_id,sender,text,status]
+    status_reciepent=statuses.get("recipient_id")
+    return [receiver_number,receiver_number_id,sender,text,status,status_reciepent]
