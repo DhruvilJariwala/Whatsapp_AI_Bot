@@ -64,12 +64,12 @@ async def incoming_msg(request: Request):
     text=data[3]
     status=data[4]
     status_recipient_id=data[5]
+    date=data[6]
     if status:
-        print(f"Message Status:{status} recipient_id: {status_recipient_id} ")
+        print(f"message status:{status} recipient_id: {status_recipient_id} date: {date}")
         return PlainTextResponse(status_code=200)
     print(payload)
-    print(f"Sender: {sender}")
-    print(f"Message: {text}")
+    print(f"sender: {sender} message:{text}")
     tool_res=tool_calling(text,receiver_number,sender=sender)
     if tool_res:
         text=tool_res

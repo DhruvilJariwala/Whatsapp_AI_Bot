@@ -117,4 +117,6 @@ def fetch_data(data):
     statuses=stats[0] if stats else {}
     status=statuses.get("status")
     status_reciepent=statuses.get("recipient_id")
-    return [receiver_number,receiver_number_id,sender,text,status,status_reciepent]
+    timestamp=statuses.get("timestamp")
+    date=datetime.datetime.fromtimestamp(int(timestamp))
+    return [receiver_number,receiver_number_id,sender,text,status,status_reciepent,str(date)]
