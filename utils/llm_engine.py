@@ -120,4 +120,6 @@ def fetch_data(data):
     timestamp=statuses.get("timestamp")
     if timestamp:
         date=datetime.datetime.fromtimestamp(int(timestamp))
+    else:
+        date=None
     return [receiver_number,receiver_number_id,sender,text,status,status_reciepent,date]
