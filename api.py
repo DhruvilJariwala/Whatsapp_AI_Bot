@@ -70,10 +70,10 @@ async def incoming_msg(request: Request):
     message = messages[0] if messages else {}
     sender = message.get("from")
     text = (message.get("text", {}).get("body"))
+    if not sender or not text:
+        return PlainTextResponse(status_code=200)
     print(f"Sender: {sender}\n")
     print(f"Message: {text}\n")
-    if not sender or not text:
-        return PlainTextResponse("Invalid Sender and Message Value",status_code=403)
     # switch_tool=llm_with_tool(switch_state) 
     # sprompt=tool_prompt(text)
     # switch_prompt=[{"role":"user","content":sprompt}]
