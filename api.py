@@ -23,6 +23,10 @@ app.add_middleware(
 
 threading.Thread(target=mongo_worker, daemon=True).start()
 
+@app.get("/")
+def root():
+    return JSONResponse(content="Hello", status_code=200)
+
 @app.get("/webhook")
 def verify(request: Request):
     params = request.query_params
