@@ -68,6 +68,8 @@ async def incoming_msg(request: Request):
     if status:
         print(f"message status:{status} recipient_id: {status_recipient_id} date: {date}")
         return PlainTextResponse(status_code=200)
+    if not sender or not text:
+        return PlainTextResponse(status_code=200)
     print(payload)
     print(f"sender: {sender} message:{text}")
     tool_res=tool_calling(text,receiver_number,sender=sender)
