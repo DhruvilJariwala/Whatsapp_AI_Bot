@@ -3,7 +3,10 @@ import json
 import pymongo
 from pymongo.mongo_client import MongoClient
 from dotenv import load_dotenv
+from fastapi.responses import JSONResponse
+from fastapi import HTTPException
 import os
+from utils.milvs_services import insert,insert_url
 load_dotenv()
 
 # r= redis.Redis(host='localhost', port=6379,db=0,decode_responses=True)
@@ -70,3 +73,38 @@ def msg_send(sender:str,response:str):
     "body": response
   }
 }
+
+def upload(number:str,file=None,url=None):
+    if file and not url:
+        file_name = file.filename
+        allowed_extensions = ["pdf"]
+        file_extension = file_name.split(".")[-1]
+        f_name = file_name.split(".")[0]    
+        print(f"File Extension: {file_extension}")
+        if file_extension not in allowed_extensions:
+            return JSONResponse(content="Unsupported file format!!!", status_code=400)
+        response = insert(pnumber=number,file_name=f_name, file_type=file_extension, file=file)
+        if response:
+            return JSONResponse(content="success", status_code=200)
+        else:
+            raise HTTPException(detail="There was an error inserting Data", status_code=400)
+    elif url and not file:
+        response=insert_url(pnumber=number,url=url)
+        if response:
+            return JSONResponse(content="success", status_code=200)
+        else:
+            raise HTTPException(detail="There was an error inserting Data", status_code=400)
+    else:
+        file_name = file.filename
+        allowed_extensions = ["pdf"]
+        file_extension = file_name.split(".")[-1]
+        f_name = file_name.split(".")[0]    
+        print(f"File Extension: {file_extension}")
+        if file_extension not in allowed_extensions:
+            return JSONResponse(content="Unsupported file format!!!", status_code=400)
+        response1 = insert(pnumber=number,file_name=f_name, file_type=file_extension, file=file)
+        response= insert_url(pnumber=number,url=url)
+        if response and response1:
+            return JSONResponse(content="success", status_code=200)
+        else:
+            return HTTPException(detail="There was an error inserting Data", status_code=400)

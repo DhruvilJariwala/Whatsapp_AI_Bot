@@ -7,9 +7,8 @@ import os
 import threading
 from dotenv import load_dotenv
 
-from utils.milvs_services import insert
-from utils.helper import check_state,change_state
-from utils.llm_engine import ask_ai,tool_calling,fetch_data,mongo_worker
+from utils.helper import check_state,upload
+from utils.llm_engine import fetch_data,mongo_worker,ai_worker,ai_queue
 
 load_dotenv()
 app=FastAPI()
@@ -22,6 +21,7 @@ app.add_middleware(
     )
 
 threading.Thread(target=mongo_worker, daemon=True).start()
+threading.Thread(target=ai_worker, daemon=True).start()
 
 @app.get("/")
 def root():
@@ -38,23 +38,14 @@ def verify(request: Request):
     return PlainTextResponse(content="Verification failed", status_code=403)
 
 @app.post("/upload")
-async def ask(pnumber: str = Form(...),file: UploadFile = File(...)):
-    file_name = file.filename
-    allowed_extensions = ["pdf"]
-    file_extension = file_name.split(".")[-1]
-    f_name = file_name.split(".")[0]    
-    print(f"File Extension: {file_extension}")
-    if file_extension not in allowed_extensions:
-        return JSONResponse(content="Unsupported file format!!!", status_code=400)
-    response = insert(pnumber=pnumber,file_name=f_name, file_type=file_extension, file=file)
-    if response:
-        return JSONResponse(content="success", status_code=200)
-    else:
-        raise HTTPException(detail="There was an error inserting Data", status_code=400)
+async def ask(pnumber: str = Form(...),file: UploadFile |  None = File(None),url: str | None = Form(None)):
+    if not file and not url:
+        raise HTTPException(status_code=422,detail="Either file or url must be provided (or both).")
+    upload(pnumber,file=file,url=url)
 
 @app.post("/webhook")
 async def incoming_msg(request: Request):
-    await verify_signature(request)
+    # await verify_signature(request)
 
     payload = await request.json()
     data=fetch_data(payload)
@@ -69,16 +60,13 @@ async def incoming_msg(request: Request):
         print(f"message status:{status} recipient_id: {status_recipient_id} date: {date}")
         return PlainTextResponse(status_code=200)
     if not sender or not text:
+        print(f"sender:{sender} message:{text}")
         return PlainTextResponse(status_code=200)
     print(payload)
     print(f"sender: {sender} message:{text}")
-    tool_res=tool_calling(text,receiver_number,sender=sender)
-    if tool_res:
-        text=tool_res
-        print(f"Restructure Query:{text}")
     state=check_state(f"{receiver_number}_@_{sender}")
     if state=="AI":
-        ask_ai(receiver_number,query=text,sender=sender,reciver_id=receiver_number_id)
+        ai_queue.put((receiver_number,text,sender,receiver_number_id))
     return PlainTextResponse(status_code=200)
 
 
@@ -100,3 +88,7 @@ async def verify_signature(request: Request):
 
     if not hmac.compare_digest(expected_hash, received_hash):
         return PlainTextResponse(content="Signature Invalid",status_code=403)
+    
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("api:app", host="localhost", port=5000, reload=True)

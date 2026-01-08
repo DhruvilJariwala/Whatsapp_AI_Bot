@@ -3,18 +3,18 @@ from io import BytesIO
 import re
 import pdfplumber
 
-def extractor(file, type: str):
+def file_extractor(file,type:str):
         if type=="pdf":
-                return data_extractor(file)
+            file_bytes = file.file.read()
+            with pdfplumber.open(BytesIO(file_bytes)) as pdf:
+                text = ""
+                for page in pdf.pages:
+                    text += page.extract_text() or ""
+            return data_extractor(text=text)
         else:
             raise JSONResponse(content="Unsupported file format!!!", status_code=400)
         
-def data_extractor(file):
-    file_bytes = file.file.read()
-    with pdfplumber.open(BytesIO(file_bytes)) as pdf:
-        text = ""
-        for page in pdf.pages:
-            text += page.extract_text() or ""
+def data_extractor(text:str):
     max_chunk_size=2000
     sentences = re.split(r'(?<=[.!?])\s+(?=[A-Z])', text) 
     chunks = []

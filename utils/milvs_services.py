@@ -1,9 +1,13 @@
 def create_ids(number:str,name: str, length: int) -> list[str]:
     return [f"{number}_@_{name}_@_{i}" for i in range(0, length+1)]
 
+def create_url_ids(number:str,url:str,length:int)-> list[str]:
+    return[f"{number}_@_{url}_@_{i}" for i in range(0,length+1)]
+
 from pymilvus import MilvusClient, CollectionSchema, FieldSchema, DataType
-from utils.extactor import extractor
+from utils.extactor import file_extractor,data_extractor
 from utils.embedder import generate_embeddings, search_embeddings
+from utils.scraper import web_scraper
 
 import time
 import os
@@ -45,7 +49,7 @@ def create_collection(collection: str) -> dict:
 
 def insert(pnumber:str,file_name: str,  file_type: str, file) -> dict | None:
     collection="user_data"
-    chunks = extractor(file=file, type=file_type)
+    chunks = file_extractor(file=file, type=file_type)
     print("length of chunks:", len(chunks))
     current_time = time.time()
     embeddings = generate_embeddings(chunks)
@@ -63,6 +67,36 @@ def insert(pnumber:str,file_name: str,  file_type: str, file) -> dict | None:
             return collection_response["message"]
 
     chunk_ids = create_ids(number=pnumber,name=file_name, length=len(chunks))
+    data_to_insert = [{"id": chunk_id, "vector": embedding, "text": chunk} for embedding, chunk, chunk_id in zip(embeddings, chunks, chunk_ids)]
+    response = milvus_client.insert(
+        collection_name=collection,
+        data=data_to_insert,
+    )
+    print("Inserted Data")
+    print("Response from Milvus:", response)
+    return response if response else None
+
+def insert_url(pnumber:str,url:str) -> dict | None:
+    collection="user_data"
+    data=web_scraper(url)
+    chunks = data_extractor(data)
+    print("length of chunks:", len(chunks))
+    current_time = time.time()
+    embeddings = generate_embeddings(chunks)
+    embedding_time = time.time()
+    print("Time taken:", embedding_time - current_time)
+    print("length of embeddings:", len(embeddings))
+
+    # Check if Collection Exist
+    collection_exist = milvus_client.has_collection(collection_name=collection)
+    if not collection_exist:
+        collection_response = create_collection(collection=collection)
+
+        # Collection Created Successfully?
+        if collection_response["status"] != 200:
+            return collection_response["message"]
+
+    chunk_ids = create_url_ids(number=pnumber,url=url, length=len(chunks))
     data_to_insert = [{"id": chunk_id, "vector": embedding, "text": chunk} for embedding, chunk, chunk_id in zip(embeddings, chunks, chunk_ids)]
     response = milvus_client.insert(
         collection_name=collection,
