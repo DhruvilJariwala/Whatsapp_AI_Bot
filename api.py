@@ -45,7 +45,7 @@ async def ask(pnumber: str = Form(...),file: UploadFile |  None = File(None),url
 
 @app.post("/webhook")
 async def incoming_msg(request: Request):
-    # await verify_signature(request)
+    await verify_signature(request)
 
     payload = await request.json()
     data=fetch_data(payload)
