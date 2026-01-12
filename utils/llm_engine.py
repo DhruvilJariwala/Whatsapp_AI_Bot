@@ -23,7 +23,7 @@ def mongo_worker():
         try:
             push_to_mongo(history, receiver)
         except Exception as e:
-            print("Mongo worker error:", e)
+            print(f"Mongo worker error: {e}")
         finally:
             mongo_queue.task_done()
 
@@ -35,69 +35,71 @@ def ai_worker():
         try:
             ask_ai(receiver_number,text,sender,receiver_number_id)
         except Exception as e:
-            print("AI worker error:", e)
+            print(f"AI worker error: {e}")
         finally:
             ai_queue.task_done()
 
-
 def ask_ai(reciver:str,query:str,sender:str,reciver_id:str):
-    tool_res=tool_calling(query,receiver=reciver,sender=sender)
+    tool_res=tool_calling(query,receiver=reciver,sender=sender,reciver_id=reciver_id)
     if tool_res:
         query=tool_res
         print(f"Restructure Query:{query}")
-    res=check_history(f"{reciver}_@_{sender}")
     state=check_state(f"{reciver}_@_{sender}")
     if state=="Human":
         print("hello")
     else:
+        res=check_history(f"{reciver}_@_{sender}")
         if res is None:
             context=search(query)
             prompt=response_prompt(context,query)
             chat_history=[{"role":"user","content":prompt}]
             generation = get_llm().invoke(chat_history)
+            chat_history.pop()
             response = generation.content
             try:
-                res=requests.post(os.getenv('BASE_URL')+reciver_id+"/messages",json=msg_send(sender=sender,response=response),headers={
+                chat_history.append({"user":query,"timestamp":str(datetime.datetime.now()),"SenderID":sender,"answeredby":check_state(f"{reciver}_@_{sender}")}) 
+                res=requests.post(url=f"{os.getenv('BASE_URL')}{reciver_id}/messages",json=msg_send(sender=sender,response=response),headers={
                     "Content-Type": "application/json",
                     "Authorization": f"Bearer {os.getenv('ACCESS_TOKEN')}"
                 })
+                chat_history.append({"assistant":response,"timestamp":str(datetime.datetime.now()),"SenderID":sender,"answeredby":check_state(f"{reciver}_@_{sender}")})                       
                 print("Sucessfully Send")
             except Exception as e:
                 print(f"ERROR: {e}")
-            chat_history.pop()
-            chat_history.append({"user":query,"assistant":response,"timestamp":str(datetime.datetime.now()),"SenderID":sender,"answeredby":check_state(f"{reciver}_@_{sender}")})                        
             initial_history(f"{reciver}_@_{sender}",chat_history)
         else:
             history=json.loads(res)
             hist=[]
             for items in history:
-                hist.append({"role":"user","content":items["user"]})
-                hist.append({"role":"assistant","content":items["assistant"]})
+                if "user" in items:
+                    hist.append({"role":"user","content":items["user"]})
+                elif "assistant" in items:
+                    hist.append({"role":"assistant","content":items["assistant"]})
             context=search(query)
             prompt=response_prompt(context,query)
             hist.append({"role":"user","content":prompt})
             generation = get_llm().invoke(hist)
             response = generation.content
             try:
+                history.append({"user":query,"timestamp":str(datetime.datetime.now()),"SenderID":sender,"answeredby":check_state(f"{reciver}_@_{sender}")})
                 res=requests.post(url=f"{os.getenv('BASE_URL')}{reciver_id}/messages",json=msg_send(sender=sender,response=response),headers={
                     "Content-Type": "application/json",
                     "Authorization": f"Bearer {os.getenv('ACCESS_TOKEN')}"
                 })
-                print(res.json())
+                history.append({"assistant":response,"timestamp":str(datetime.datetime.now()),"SenderID":sender,"answeredby":check_state(f"{reciver}_@_{sender}")})
                 print("Sucessfully Send")
             except Exception as e:
                 print(f"ERROR: {e}")
-            history=deque(history,10)
-            history.append({"user":query,"assistant":response,"timestamp":str(datetime.datetime.now()),"SenderID":sender,"answeredby":check_state(f"{reciver}_@_{sender}")})                        
+            history=deque(history,20)
             counter=int(get_counter(f"{reciver}_@_{sender}"))
-            counter+=1
-            if counter==10:
+            counter+=2
+            if counter==20:
                 mongo_history=copy.deepcopy(history)
                 mongo_queue.put((mongo_history,reciver))
                 counter=0
             append_history(f"{reciver}_@_{sender}",list(history),counter=counter)
 
-def tool_calling(msg:str,receiver:str,sender:str):
+def tool_calling(msg:str,receiver:str,sender:str,reciver_id:str):
     tool=llm_with_tool(followup_handler) 
     sprompt=tool_prompt(msg)
     res=check_history(f"{receiver}_@_{sender}")
@@ -107,13 +109,21 @@ def tool_calling(msg:str,receiver:str,sender:str):
         temp=json.loads(res)
         tool_his=[]
         for items in temp:
-            tool_his.append({"role":"user","content":items["user"]})
-            tool_his.append({"role":"assistant","content":items["assistant"]})
+            if "user" in items:
+                tool_his.append({"role":"user","content":items["user"]})
+            elif "assistant" in items:
+                tool_his.append({"role":"assistant","content":items["assistant"]})
         tool_his.append({"role":"user","content":sprompt})
     tool_res=tool.invoke(tool_his)
     if(tool_res.tool_calls):
         if(tool_res.tool_calls[0]['name']=="switch_state"):
             # change_state(f"{receiver_number}_@_{sender}")
+            # try:
+            #     res = requests.post(url=f"{os.getenv('BASE_URL')}{reciver_id}/messages",json=msg_send(sender=sender,response="response"),headers={
+            #     "Content-Type": "application/json",
+            #     "Authorization": f"Bearer {os.getenv('ACCESS_TOKEN')}"})
+            # except Exception as e:
+            #     print(f"Error sending default Human msg: {e}")
             print("Hello")
             return None
         elif(tool_res.tool_calls[0]['name']=="followup_handler"):

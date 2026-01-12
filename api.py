@@ -1,13 +1,15 @@
 from fastapi import FastAPI, HTTPException, File, UploadFile,Form,Request,Body
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import PlainTextResponse,JSONResponse
+from fastapi.responses import JSONResponse
 import hashlib
 import hmac
 import os
 import threading
 from dotenv import load_dotenv
+import requests
+import datetime
 
-from utils.helper import check_state,upload
+from utils.helper import check_state,upload,get_id,msg_send,append_history,get_counter
 from utils.llm_engine import fetch_data,mongo_worker,ai_worker,ai_queue
 
 load_dotenv()
@@ -33,9 +35,9 @@ def verify(request: Request):
     VERIFY_TOKEN = os.getenv("VERIFY_TOKEN")
     if (params.get("hub.mode") == "subscribe" and params.get("hub.verify_token") == VERIFY_TOKEN):
         print("WEBHOOK VERIFIED")
-        return PlainTextResponse(content=params.get("hub.challenge"),status_code=200)
+        return JSONResponse(content=params.get("hub.challenge"),status_code=200)
     
-    return PlainTextResponse(content="Verification failed", status_code=403)
+    return JSONResponse(content="Verification failed", status_code=403)
 
 @app.post("/upload")
 async def ask(pnumber: str = Form(...),file: UploadFile |  None = File(None),url: str | None = Form(None)):
@@ -58,23 +60,28 @@ async def incoming_msg(request: Request):
     date=data[6]
     if status:
         print(f"message status:{status} recipient_id: {status_recipient_id} date: {date}")
-        return PlainTextResponse(status_code=200)
+        return JSONResponse(status_code=200)
     if not sender or not text:
         print(f"sender:{sender} message:{text}")
-        return PlainTextResponse(status_code=200)
+        return JSONResponse(status_code=200)
     print(payload)
     print(f"sender: {sender} message:{text}")
-    state=check_state(f"{receiver_number}_@_{sender}")
+    state=check_state(f"{receiver_number}_@_{sender}",reciever=receiver_number_id)
     if state=="AI":
         ai_queue.put((receiver_number,text,sender,receiver_number_id))
-    return PlainTextResponse(status_code=200)
-
+    elif state=="Human":
+        history=[]
+        history.append({"user":text,"timestamp":str(datetime.datetime.now()),"SenderID":sender,"answeredby":check_state(f"{receiver_number}_@_{sender}")})  
+        count=get_counter(f"{receiver_number}_@_{sender}")
+        count+=1
+        append_history(f"{receiver_number}_@_{sender}",chat_history=history,counter=count)
+    return JSONResponse(status_code=200)
 
 async def verify_signature(request: Request):
     signature = request.headers.get("X-Hub-Signature-256")
 
     if not signature:
-        return PlainTextResponse(content="Signature Invalid",status_code=403)
+        return JSONResponse(content="Signature Invalid",status_code=403)
 
     received_hash = signature.replace("sha256=", "")
 
@@ -87,8 +94,21 @@ async def verify_signature(request: Request):
     ).hexdigest()
 
     if not hmac.compare_digest(expected_hash, received_hash):
-        return PlainTextResponse(content="Signature Invalid",status_code=403)
-    
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run("api:app", host="localhost", port=5000, reload=True)
+        return JSONResponse(content="Signature Invalid",status_code=403)
+
+@app.post("/human")
+def human(msg:str=Body(...),receiver_number:str=Body(...),sender:str=Body(...)):
+    response=get_id(f"{receiver_number}_@_{sender}")
+    history=[]
+    history.append({"user":msg,"timestamp":str(datetime.datetime.now()),"SenderID":sender,"answeredby":check_state(f"{response}_@_{sender}")})  
+    count=get_counter(f"{receiver_number}_@_{sender}")
+    count+=1
+    try:
+        res = requests.post(url=f"{os.getenv('BASE_URL')}{response}/messages",json=msg_send(sender=sender,response=msg),headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {os.getenv('ACCESS_TOKEN')}"})
+        append_history(f"{receiver_number}_@_{sender}",chat_history=history,counter=count)
+        return JSONResponse(status_code=200)
+    except Exception as e:
+        print(f"Error sending Human msg {e}")
+        return JSONResponse(status_code=400)

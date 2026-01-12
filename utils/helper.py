@@ -1,6 +1,6 @@
 import redis
 import json
-import pymongo
+from pymongo.errors import ConnectionFailure
 from pymongo.mongo_client import MongoClient
 from dotenv import load_dotenv
 from fastapi.responses import JSONResponse
@@ -8,16 +8,20 @@ from fastapi import HTTPException
 import os
 from utils.milvs_services import insert,insert_url
 load_dotenv()
-
 # r= redis.Redis(host='localhost', port=6379,db=0,decode_responses=True)
 r = redis.Redis.from_url(os.getenv("REDIS_URI"),decode_responses=True)
 
-def check_state(soruce:str):
+def check_state(soruce:str,reciever:str | None):
     res=r.hget(soruce,"state")
     if res is None:
-        r.hset(soruce,mapping={"state":"AI"})
+        data={"state":"AI","receiver_id":reciever}
+        r.hset(soruce,mapping=data)
     resp=r.hget(soruce,"state")
     return resp
+
+def get_id(number:str):
+    res=r.hget(number,"receiver_id")
+    return res
 
 def check_history(number:str):
     res=r.hget(number,"history")
@@ -38,7 +42,7 @@ def append_history(number:str,chat_history:list[dict],counter:int):
 def get_counter(number:str):
     res=r.hget(number,"counter")
     if res is None:
-        r.hset(number,mapping={"counter":1})
+        r.hset(number,mapping={"counter":2})
     resp= r.hget(number,"counter")
     return resp
 
@@ -55,7 +59,7 @@ def push_to_mongo(chat_history:list[dict],reciever:str):
         print(f"\nSuccessfully inserted {len(result.inserted_ids)} documents.")
         print("Inserted IDs:", result.inserted_ids)
 
-    except pymongo.errors.ConnectionFailure as e:
+    except ConnectionFailure as e:
         print(f"Connection failed: {e}")
     except Exception as e:
         print(f"An error occurred: {e}")
