@@ -38,7 +38,7 @@ def tool_prompt(query:str):
    return f"""
 You are a professional AI assistant representing our company.
 
-you have to access to 1 tool: followup_handler
+you have to access to 2 tool: followup_handler,switch_case
 
 You must call 'followup_handler' if:
       1. The user's message is a follow-up to a previous conversation.  
@@ -50,15 +50,14 @@ Example Queries for 'followup_handler':
     - User: "What was the Techstack"
     - Tool → followup_handler
 
+You must call 'switch_case' if:
+    - To switch the conversation flow from automated AI handling to a human-assisted interaction.
+    - To ensure the user is connected to a live human when the query requires personal assistance, escalation, or manual intervention.
+    - To improve user experience when the AI is not sufficient or the user explicitly requests human support.
+
+Example Queries for 'switch_case':
+      - "I want to talk to a human"
+      - "Connect me to customer support"
 Query:
 {query}
 """
-
-# You must call 'switch_case' if:
-#     - To switch the conversation flow from automated AI handling to a human-assisted interaction.
-#     - To ensure the user is connected to a live human when the query requires personal assistance, escalation, or manual intervention.
-#     - To improve user experience when the AI is not sufficient or the user explicitly requests human support.
-
-# Example Queries for 'switch_case':
-#       - "I want to talk to a human"
-#       - "Connect me to customer support"

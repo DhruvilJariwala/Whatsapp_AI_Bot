@@ -25,7 +25,6 @@ schema = CollectionSchema(
 )
 
 milvus_client = MilvusClient(uri=os.getenv("ZILLIS_URI_ENDPOINT"), token=os.getenv("ZILLIS_TOKEN"), db_name=os.getenv("ZILLIS_DB_NAME"))
-# milvus_client = MilvusClient(uri=os.getenv("MILVUS_URI"), db_name=os.getenv("MILVUS_DB_NAME"))
                 
 def create_collection(collection: str) -> dict:
     index_params = milvus_client.prepare_index_params()
@@ -57,12 +56,10 @@ def insert(pnumber:str,file_name: str,  file_type: str, file) -> dict | None:
     print("Time taken:", embedding_time - current_time)
     print("length of embeddings:", len(embeddings))
 
-    # Check if Collection Exist
     collection_exist = milvus_client.has_collection(collection_name=collection)
     if not collection_exist:
         collection_response = create_collection(collection=collection)
 
-        # Collection Created Successfully?
         if collection_response["status"] != 200:
             return collection_response["message"]
 

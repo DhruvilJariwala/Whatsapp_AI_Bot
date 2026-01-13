@@ -1,5 +1,6 @@
-import redis
+import redis 
 import json
+from fastapi import WebSocket
 from pymongo.errors import ConnectionFailure
 from pymongo.mongo_client import MongoClient
 from dotenv import load_dotenv
@@ -7,11 +8,14 @@ from fastapi.responses import JSONResponse
 from fastapi import HTTPException
 import os
 from utils.milvs_services import insert,insert_url
-load_dotenv()
-# r= redis.Redis(host='localhost', port=6379,db=0,decode_responses=True)
-r = redis.Redis.from_url(os.getenv("REDIS_URI"),decode_responses=True)
 
-def check_state(soruce:str,reciever:str | None):
+load_dotenv()
+
+r = redis.Redis.from_url(os.getenv("REDIS_URI"),decode_responses=True)
+connected_clients: set[WebSocket] =set()
+dead_clients=[]
+
+def check_state(soruce:str,reciever:str=None):
     res=r.hget(soruce,"state")
     if res is None:
         data={"state":"AI","receiver_id":reciever}
@@ -33,11 +37,22 @@ def initial_history(number:str,chat_history:list[dict]):
     res={"state":response['state'],"history":chat_history}
     r.hset(number,mapping=res)
 
-def append_history(number:str,chat_history:list[dict],counter:int):
+async def append_history(number:str,chat_history:list[dict],counter:int):
     response=r.hgetall(number)
     chat_history=json.dumps(chat_history)
     res={"state":response['state'],"history":chat_history,"counter":counter}
     r.hset(number,mapping=res)
+    answer=check_state(number)
+    if answer=="Human":
+        history=json.loads(chat_history)
+        for ws in connected_clients:
+            try:
+                await ws.send_json(history)
+            except:
+                dead_clients.append(ws)
+
+        for ws in dead_clients:
+            connected_clients.remove(ws)
 
 def get_counter(number:str):
     res=r.hget(number,"counter")
@@ -46,8 +61,18 @@ def get_counter(number:str):
     resp= r.hget(number,"counter")
     return resp
 
-def change_state(number:str):
+async def change_state(number:str):
     r.hset(number,"state","Human")
+    response=check_history(number=number)
+    history=json.loads(response)
+    for ws in connected_clients:
+        try:
+           await ws.send_json(history)
+        except:
+            dead_clients.append(ws)
+                
+    for ws in dead_clients:
+        connected_clients.remove(ws)
 
 def push_to_mongo(chat_history:list[dict],reciever:str):
     connection_string = os.getenv("MONGODB_URI")
