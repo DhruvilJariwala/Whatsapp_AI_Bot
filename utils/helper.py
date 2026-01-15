@@ -65,9 +65,14 @@ async def change_state(number:str):
     r.hset(number,"state","Human")
     response=check_history(number=number)
     history=json.loads(response)
+    data=number.split("_@_")
+    recieve=data[0]
+    sender=data[1]
+    mongo_history=fetch_mongo_data(reciever=recieve,sender=sender)
+    chat_history=mongo_history+history
     for ws in connected_clients:
         try:
-           await ws.send_json(history)
+           await ws.send_json(chat_history)
         except:
             dead_clients.append(ws)
                 
@@ -137,3 +142,24 @@ def upload(number:str,file=None,url=None):
             return JSONResponse(content="success", status_code=200)
         else:
             return HTTPException(detail="There was an error inserting Data", status_code=400)
+
+def fetch_mongo_data(reciever:str,sender:str):
+    connection_string = os.getenv("MONGODB_URI")
+    mongo_history=[]
+    try:
+        client = MongoClient(connection_string)
+        db = client['whatsappbot']
+        collection = db[reciever]
+        query_filter={"SenderID":sender}
+        cursor=collection.find(query_filter)
+        for document in cursor:
+            document.pop("_id")
+            mongo_history.append(document)
+    except ConnectionFailure as e:
+        print(f"Connection failed: {e}")
+    except Exception as e:
+        print(f"An error occurred: {e}")
+    finally:
+        if client:
+            client.close()
+    return mongo_history

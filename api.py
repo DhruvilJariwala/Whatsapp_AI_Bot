@@ -113,7 +113,7 @@ async def verify_signature(request: Request):
 async def human(msg:str=Body(...),receiver_number:str=Body(...),sender:str=Body(...)):
     response=get_id(f"{receiver_number}_@_{sender}")
     history=[]
-    history.append({"user":msg,"timestamp":str(datetime.datetime.now()),"SenderID":sender,"answeredby":check_state(f"{receiver_number}_@_{sender}")})  
+    history.append({"human":msg,"timestamp":str(datetime.datetime.now()),"SenderID":sender,"answeredby":check_state(f"{receiver_number}_@_{sender}")})  
     count=get_counter(f"{receiver_number}_@_{sender}")
     count=int(count)+1
     try:
