@@ -65,7 +65,7 @@ def change_state(number:str):
 def close_ticket(number:str):
     if not r:
         return None
-    r.hset(number,mapping={"state":"AI","history":"","counter":0})
+    r.hset(number,mapping={"state":"AI","history":"[]","counter":0})
     return "Success"
 
 async def send_history(number:str):
