@@ -1,6 +1,8 @@
 from langchain_groq import ChatGroq
 import os
+from dotenv import load_dotenv
 
+load_dotenv()
 
 def get_llm():
     return ChatGroq(api_key=os.getenv("GROQ_API_KEY"), model=os.getenv("GROQ_MODEL_NAME"), temperature=0, max_tokens=None)

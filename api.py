@@ -1,8 +1,6 @@
 from fastapi import FastAPI, HTTPException, File, UploadFile,Form,Request,Body,WebSocketDisconnect,WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-import hashlib
-import hmac
 import os
 import threading
 from dotenv import load_dotenv
@@ -10,8 +8,9 @@ import requests
 import datetime
 import asyncio
 
-from utils.helper import check_state,append_history,get_counter,get_id,upload,msg_send,connected_clients
-from utils.llm_engine import fetch_data,mongo_worker,ai_worker,ai_queue
+from services.db.redis_helper import check_state,get_counter,get_id,send_human_msg,connected_clients
+from utils.helper import upload,msg_send,fetch_data,verify_signature
+from services.ai.llm_engine import mongo_worker,ai_worker,ai_queue
 
 load_dotenv()
 
@@ -37,6 +36,8 @@ async def websocket_endpoint(ws: WebSocket):
             await asyncio.sleep(10)
     except WebSocketDisconnect:
         connected_clients.remove(ws)
+    except Exception as e:
+        print(f"WEB SOCKET EXCEPTION:{e}")
 
 @app.get("/")
 def root():
@@ -87,30 +88,14 @@ async def incoming_msg(request: Request):
         history.append({"user":text,"timestamp":str(datetime.datetime.now()),"SenderID":sender,"answeredby":check_state(f"{receiver_number}_@_{sender}")})  
         count=get_counter(f"{receiver_number}_@_{sender}")
         count=int(count)+1
-        await append_history(f"{receiver_number}_@_{sender}",chat_history=history,counter=count)
+        await send_human_msg(f"{receiver_number}_@_{sender}",chat_history=history,counter=count)
     return JSONResponse(content="OK",status_code=200)
 
-async def verify_signature(request: Request):
-    signature = request.headers.get("X-Hub-Signature-256")
-
-    if not signature:
-        return JSONResponse(content="Signature Invalid",status_code=403)
-
-    received_hash = signature.replace("sha256=", "")
-
-    body = await request.body()
-
-    expected_hash = hmac.new(
-        key=os.getenv("ACCESS_TOKEN").encode("utf-8"),
-        msg=body,
-        digestmod=hashlib.sha256
-    ).hexdigest()
-
-    if not hmac.compare_digest(expected_hash, received_hash):
-        return JSONResponse(content="Signature Invalid",status_code=403)
-
 @app.post("/human")
-async def human(msg:str=Body(...),receiver_number:str=Body(...),sender:str=Body(...)):
+async def human(data:dict = Body(...)):
+    receiver_number=data.get("receiver")
+    sender=data.get("sender")
+    msg=data.get("msg")
     response=get_id(f"{receiver_number}_@_{sender}")
     history=[]
     history.append({"human":msg,"timestamp":str(datetime.datetime.now()),"SenderID":sender,"answeredby":check_state(f"{receiver_number}_@_{sender}")})  
@@ -120,7 +105,7 @@ async def human(msg:str=Body(...),receiver_number:str=Body(...),sender:str=Body(
         res = requests.post(url=f"{os.getenv('BASE_URL')}{response}/messages",json=msg_send(sender=sender,response=msg),headers={
             "Content-Type": "application/json",
             "Authorization": f"Bearer {os.getenv('ACCESS_TOKEN')}"})
-        append_history(f"{receiver_number}_@_{sender}",chat_history=history,counter=count)
+        await send_human_msg(f"{receiver_number}_@_{sender}",chat_history=history,counter=count)
         return JSONResponse(content="OK",status_code=200)
     except Exception as e:
         print(f"Error sending Human msg {e}")

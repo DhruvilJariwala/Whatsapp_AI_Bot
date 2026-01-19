@@ -1,112 +1,13 @@
-import redis 
-import json
-from fastapi import WebSocket
-from pymongo.errors import ConnectionFailure
-from pymongo.mongo_client import MongoClient
-from dotenv import load_dotenv
 from fastapi.responses import JSONResponse
-from fastapi import HTTPException
+from fastapi import HTTPException,Request
+import datetime
+from services.db.milvs_services import insert_doc,insert_url
+import hashlib
+import hmac
 import os
-from utils.milvs_services import insert,insert_url
+from dotenv import load_dotenv
 
 load_dotenv()
-
-r = redis.Redis.from_url(os.getenv("REDIS_URI"),decode_responses=True)
-connected_clients: set[WebSocket] =set()
-dead_clients=[]
-
-def check_state(soruce:str,reciever:str=None):
-    res=r.hget(soruce,"state")
-    if res is None:
-        data={"state":"AI","receiver_id":reciever}
-        r.hset(soruce,mapping=data)
-    resp=r.hget(soruce,"state")
-    return resp
-
-def get_id(number:str):
-    res=r.hget(number,"receiver_id")
-    return res
-
-def check_history(number:str):
-    res=r.hget(number,"history")
-    return res
-
-def initial_history(number:str,chat_history:list[dict]):
-    response=r.hgetall(number)
-    chat_history=json.dumps(chat_history)
-    res={"state":response['state'],"history":chat_history}
-    r.hset(number,mapping=res)
-
-async def append_history(number:str,chat_history:list[dict],counter:int):
-    response=r.hgetall(number)
-    chat_history=json.dumps(chat_history)
-    res={"state":response['state'],"history":chat_history,"counter":counter}
-    r.hset(number,mapping=res)
-    answer=check_state(number)
-    if answer=="Human":
-        history=json.loads(chat_history)
-        for ws in connected_clients:
-            try:
-                await ws.send_json(history)
-            except:
-                dead_clients.append(ws)
-
-        for ws in dead_clients:
-            connected_clients.remove(ws)
-
-def get_counter(number:str):
-    res=r.hget(number,"counter")
-    if res is None:
-        r.hset(number,mapping={"counter":2})
-    resp= r.hget(number,"counter")
-    return resp
-
-async def change_state(number:str):
-    r.hset(number,"state","Human")
-    response=check_history(number=number)
-    history=json.loads(response)
-    data=number.split("_@_")
-    recieve=data[0]
-    sender=data[1]
-    mongo_history=fetch_mongo_data(reciever=recieve,sender=sender)
-    chat_history=mongo_history+history
-    for ws in connected_clients:
-        try:
-           await ws.send_json(chat_history)
-        except:
-            dead_clients.append(ws)
-                
-    for ws in dead_clients:
-        connected_clients.remove(ws)
-
-def push_to_mongo(chat_history:list[dict],reciever:str):
-    connection_string = os.getenv("MONGODB_URI")
-    try:
-        client = MongoClient(connection_string)
-        db = client['whatsappbot']
-        collection = db[reciever]
-        result = collection.insert_many(chat_history)
-        print(f"\nSuccessfully inserted {len(result.inserted_ids)} documents.")
-        print("Inserted IDs:", result.inserted_ids)
-
-    except ConnectionFailure as e:
-        print(f"Connection failed: {e}")
-    except Exception as e:
-        print(f"An error occurred: {e}")
-    finally:
-        if client:
-            client.close()
-
-def msg_send(sender:str,response:str):
-    return {
-  "messaging_product": "whatsapp",
-  "recipient_type": "individual",
-  "to": sender,
-  "type": "text",
-  "text": {
-    "body": response
-  }
-}
 
 def upload(number:str,file=None,url=None):
     if file and not url:
@@ -117,7 +18,7 @@ def upload(number:str,file=None,url=None):
         print(f"File Extension: {file_extension}")
         if file_extension not in allowed_extensions:
             return JSONResponse(content="Unsupported file format!!!", status_code=400)
-        response = insert(pnumber=number,file_name=f_name, file_type=file_extension, file=file)
+        response = insert_doc(pnumber=number,file_name=f_name, file_type=file_extension, file=file)
         if response:
             return JSONResponse(content="success", status_code=200)
         else:
@@ -136,30 +37,63 @@ def upload(number:str,file=None,url=None):
         print(f"File Extension: {file_extension}")
         if file_extension not in allowed_extensions:
             return JSONResponse(content="Unsupported file format!!!", status_code=400)
-        response1 = insert(pnumber=number,file_name=f_name, file_type=file_extension, file=file)
+        response1 = insert_doc(pnumber=number,file_name=f_name, file_type=file_extension, file=file)
         response= insert_url(pnumber=number,url=url)
         if response and response1:
             return JSONResponse(content="success", status_code=200)
         else:
             return HTTPException(detail="There was an error inserting Data", status_code=400)
+        
+def fetch_data(data):
+    entry = data.get("entry", [{}])[0]
+    changes = entry.get("changes", [{}])[0]
+    value = changes.get("value", {})
+    metadata = value.get("metadata", {})
+    receiver_number = metadata.get("display_phone_number")
+    receiver_number_id = metadata.get("phone_number_id")
+    messages = value.get("messages", [{}])
+    message = messages[0] if messages else {}
+    sender = message.get("from")
+    text = (message.get("text", {}).get("body"))
+    stats=value.get("statuses", [{}])
+    statuses=stats[0] if stats else {}
+    status=statuses.get("status")
+    status_reciepent=statuses.get("recipient_id")
+    timestamp=statuses.get("timestamp")
+    if timestamp:
+        date=datetime.datetime.fromtimestamp(int(timestamp))
+    else:
+        date=None
+    return [receiver_number,receiver_number_id,sender,text,status,status_reciepent,date]
 
-def fetch_mongo_data(reciever:str,sender:str):
-    connection_string = os.getenv("MONGODB_URI")
-    mongo_history=[]
-    try:
-        client = MongoClient(connection_string)
-        db = client['whatsappbot']
-        collection = db[reciever]
-        query_filter={"SenderID":sender}
-        cursor=collection.find(query_filter)
-        for document in cursor:
-            document.pop("_id")
-            mongo_history.append(document)
-    except ConnectionFailure as e:
-        print(f"Connection failed: {e}")
-    except Exception as e:
-        print(f"An error occurred: {e}")
-    finally:
-        if client:
-            client.close()
-    return mongo_history
+
+async def verify_signature(request: Request):
+    signature = request.headers.get("X-Hub-Signature-256")
+
+    if not signature:
+        return JSONResponse(content="Signature Invalid",status_code=403)
+
+    received_hash = signature.replace("sha256=", "")
+
+    body = await request.body()
+
+    expected_hash = hmac.new(
+        key=os.getenv("ACCESS_TOKEN").encode("utf-8"),
+        msg=body,
+        digestmod=hashlib.sha256
+    ).hexdigest()
+
+    if not hmac.compare_digest(expected_hash, received_hash):
+        return JSONResponse(content="Signature Invalid",status_code=403)
+    
+
+def msg_send(sender:str,response:str):
+    return {
+  "messaging_product": "whatsapp",
+  "recipient_type": "individual",
+  "to": sender,
+  "type": "text",
+  "text": {
+    "body": response
+  }
+}

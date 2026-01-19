@@ -8,11 +8,13 @@ import copy
 import queue
 import asyncio
 
-from utils.helper import check_history,initial_history,msg_send,get_counter,append_history,push_to_mongo,check_state,change_state
-from utils.llms import get_llm,llm_with_tool
-from utils.milvs_services import search
-from utils.prompt import response_prompt,tool_prompt
-from utils.tool import switch_state,followup_handler
+from services.db.redis_helper import check_history,get_counter,append_history,change_state,check_state,send_history
+from services.db.mongo_helper import push_to_mongo
+from utils.helper import msg_send
+from services.ai.llms import get_llm,llm_with_tool
+from services.db.milvs_services import search
+from services.ai.prompt import response_prompt,tool_prompt
+from services.ai.tool import switch_state,followup_handler
 
 load_dotenv()
 
@@ -41,14 +43,22 @@ def ai_worker():
             ai_queue.task_done()
 
 async def ask_ai(reciver:str,query:str,sender:str,reciver_id:str):
-    tool_res=await tool_calling(query,receiver=reciver,sender=sender,reciver_id=reciver_id)
+    tool_res=tool_calling(query,receiver=reciver,sender=sender,reciver_id=reciver_id)
     if tool_res:
         if tool_res=="Human":
+            res=check_history(f"{reciver}_@_{sender}")
+            chat_history=json.loads(res)
+            counter=int(get_counter(f"{reciver}_@_{sender}"))
+            counter+=1
+            chat_history.append({"user":query,"timestamp":str(datetime.datetime.now()),"SenderID":sender,"answeredby":check_state(f"{reciver}_@_{sender}")})
+            append_history(f"{reciver}_@_{sender}",chat_history=chat_history,counter=counter)
+            await send_history(f"{reciver}_@_{sender}")
             print("Switch to Human")
             return
         else:
             query=tool_res
             print(f"Restructure Query:{query}")
+            
     res=check_history(f"{reciver}_@_{sender}")
     if res is None:
         context=search(query)
@@ -67,7 +77,9 @@ async def ask_ai(reciver:str,query:str,sender:str,reciver_id:str):
             print("Sucessfully Send")
         except Exception as e:
             print(f"ERROR: {e}")
-        initial_history(f"{reciver}_@_{sender}",chat_history)
+        count=int(get_counter(f"{reciver}_@_{sender}"))
+        count+=2
+        append_history(f"{reciver}_@_{sender}",chat_history,count)
     else:
         history=json.loads(res)
         hist=[]
@@ -98,9 +110,9 @@ async def ask_ai(reciver:str,query:str,sender:str,reciver_id:str):
             mongo_history=copy.deepcopy(history)
             mongo_queue.put((mongo_history,reciver))
             counter=0
-        await append_history(f"{reciver}_@_{sender}",list(history),counter=counter)
+        append_history(f"{reciver}_@_{sender}",list(history),counter=counter)
 
-async def tool_calling(msg:str,receiver:str,sender:str,reciver_id:str):
+def tool_calling(msg:str,receiver:str,sender:str,reciver_id:str):
     tool=llm_with_tool(followup_handler,switch_state) 
     sprompt=tool_prompt(msg)
     res=check_history(f"{receiver}_@_{sender}")
@@ -118,7 +130,7 @@ async def tool_calling(msg:str,receiver:str,sender:str,reciver_id:str):
     tool_res=tool.invoke(tool_his)
     if(tool_res.tool_calls):
         if(tool_res.tool_calls[0]['name']=="switch_state"):
-            await change_state(f"{receiver}_@_{sender}")
+            change_state(f"{receiver}_@_{sender}")
             try:
                 res = requests.post(url=f"{os.getenv('BASE_URL')}{reciver_id}/messages",json=msg_send(sender=sender,response="A Support representive will soon get back to you"),headers={
                 "Content-Type": "application/json",
@@ -130,25 +142,3 @@ async def tool_calling(msg:str,receiver:str,sender:str,reciver_id:str):
             text=tool_res.tool_calls[0]['args']['query']
             return text
     return None
-
-def fetch_data(data):
-    entry = data.get("entry", [{}])[0]
-    changes = entry.get("changes", [{}])[0]
-    value = changes.get("value", {})
-    metadata = value.get("metadata", {})
-    receiver_number = metadata.get("display_phone_number")
-    receiver_number_id = metadata.get("phone_number_id")
-    messages = value.get("messages", [{}])
-    message = messages[0] if messages else {}
-    sender = message.get("from")
-    text = (message.get("text", {}).get("body"))
-    stats=value.get("statuses", [{}])
-    statuses=stats[0] if stats else {}
-    status=statuses.get("status")
-    status_reciepent=statuses.get("recipient_id")
-    timestamp=statuses.get("timestamp")
-    if timestamp:
-        date=datetime.datetime.fromtimestamp(int(timestamp))
-    else:
-        date=None
-    return [receiver_number,receiver_number_id,sender,text,status,status_reciepent,date]

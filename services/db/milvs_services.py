@@ -46,7 +46,7 @@ def create_collection(collection: str) -> dict:
     except Exception as e:
         return {"status": 400, "message": str(e)}
 
-def insert(pnumber:str,file_name: str,  file_type: str, file) -> dict | None:
+def insert_doc(pnumber:str,file_name: str,  file_type: str, file) -> dict | None:
     collection="user_data"
     chunks = file_extractor(file=file, type=file_type)
     print("length of chunks:", len(chunks))
@@ -84,12 +84,10 @@ def insert_url(pnumber:str,url:str) -> dict | None:
     print("Time taken:", embedding_time - current_time)
     print("length of embeddings:", len(embeddings))
 
-    # Check if Collection Exist
     collection_exist = milvus_client.has_collection(collection_name=collection)
     if not collection_exist:
         collection_response = create_collection(collection=collection)
 
-        # Collection Created Successfully?
         if collection_response["status"] != 200:
             return collection_response["message"]
 
