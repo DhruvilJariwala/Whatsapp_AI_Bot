@@ -8,7 +8,7 @@ import requests
 import datetime
 import asyncio
 
-from services.db.redis_helper import check_state,get_counter,get_id,send_human_msg,connected_clients
+from services.db.redis_helper import check_state,get_counter,get_id,send_human_msg,close_ticket,connected_clients
 from utils.helper import upload,msg_send,fetch_data,verify_signature
 from services.ai.llm_engine import mongo_worker,ai_worker,ai_queue
 
@@ -81,6 +81,9 @@ async def incoming_msg(request: Request):
     print(payload)
     print(f"sender: {sender} message:{text}")
     state=check_state(f"{receiver_number}_@_{sender}",reciever=receiver_number_id)
+    if not state:
+        print("Redis Connection Error")
+        return JSONResponse(content="OK",status_code=200)
     if state=="AI":
         ai_queue.put((receiver_number,text,sender,receiver_number_id))
     elif state=="Human":
@@ -97,6 +100,9 @@ async def human(data:dict = Body(...)):
     sender=data.get("sender")
     msg=data.get("msg")
     response=get_id(f"{receiver_number}_@_{sender}")
+    if not response:
+        print("Redis Connection Error")
+        return JSONResponse(content="OK",status_code=200)
     history=[]
     history.append({"human":msg,"timestamp":str(datetime.datetime.now()),"SenderID":sender,"answeredby":check_state(f"{receiver_number}_@_{sender}")})  
     count=get_counter(f"{receiver_number}_@_{sender}")
@@ -110,3 +116,13 @@ async def human(data:dict = Body(...)):
     except Exception as e:
         print(f"Error sending Human msg {e}")
         return JSONResponse(content="OK",status_code=400)
+    
+@app.post("/ticket")
+def ticket(data:dict=Body(...)):
+     receiver=data.get("receiver")
+     sender=data.get("sender")
+     res=close_ticket(f"{receiver}_@_{sender}")
+     if res:
+         return JSONResponse(content="OK",status_code=200)
+     else:
+         return JSONResponse(content="Redis Error",status_code=400)
