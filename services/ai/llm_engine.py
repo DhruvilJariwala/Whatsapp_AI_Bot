@@ -8,8 +8,8 @@ import copy
 import queue
 import asyncio
 
-from services.db.redis_helper import check_history,get_counter,append_history,change_state,check_state,send_history
-from services.db.mongo_helper import push_to_mongo
+from services.db.redis_helper import check_history,get_counter,append_history,change_state,check_state,send_history,set_support_id
+from services.db.mongo_helper import push_to_mongo,assign_chat,update_count
 from utils.helper import msg_send
 from services.ai.llms import get_llm,llm_with_tool
 from services.db.milvs_services import search
@@ -46,13 +46,16 @@ async def ask_ai(reciver:str,query:str,sender:str,reciver_id:str):
     tool_res=tool_calling(query,receiver=reciver,sender=sender,reciver_id=reciver_id)
     if tool_res:
         if tool_res=="Human":
+            user_id=assign_chat(reciver=reciver)
+            update_count(reciver=reciver,user_id=user_id,mode="up")
+            set_support_id(f"{reciver}_@_{sender}",user_id=user_id)
             res=check_history(f"{reciver}_@_{sender}")
             chat_history=json.loads(res)
             counter=int(get_counter(f"{reciver}_@_{sender}"))
             counter+=1
             chat_history.append({"user":query,"timestamp":str(datetime.datetime.now()),"SenderID":sender,"answeredby":check_state(f"{reciver}_@_{sender}")})
             append_history(f"{reciver}_@_{sender}",chat_history=chat_history,counter=counter)
-            await send_history(f"{reciver}_@_{sender}")
+            await send_history(f"{reciver}_@_{sender}",user_id=user_id)
             print("Switch to Human")
             return
         else:
