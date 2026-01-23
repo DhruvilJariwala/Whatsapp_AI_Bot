@@ -37,9 +37,9 @@ def upload(number:str,file=None,url=None):
         print(f"File Extension: {file_extension}")
         if file_extension not in allowed_extensions:
             return JSONResponse(content="Unsupported file format!!!", status_code=400)
-        response1 = insert_doc(pnumber=number,file_name=f_name, file_type=file_extension, file=file)
-        response= insert_url(pnumber=number,url=url)
-        if response and response1:
+        doc_response = insert_doc(pnumber=number,file_name=f_name, file_type=file_extension, file=file)
+        url_response= insert_url(pnumber=number,url=url)
+        if doc_response and url_response:
             return JSONResponse(content="success", status_code=200)
         else:
             return HTTPException(detail="There was an error inserting Data", status_code=400)
