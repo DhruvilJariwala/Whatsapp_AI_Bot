@@ -6,7 +6,6 @@ import threading
 from dotenv import load_dotenv
 import requests
 import datetime
-import asyncio
 import json
 
 from services.db.redis_helper import check_history,check_state,get_counter,get_id,send_human_msg,close_ticket,append_history,get_support_id,connected_clients
@@ -35,7 +34,7 @@ async def websocket_endpoint(ws: WebSocket,user_id:str):
 
     try:
         while True:
-            await asyncio.sleep(10)
+            await ws.receive_text()
     except WebSocketDisconnect:
         print(f"Disconneted {user_id}")
     except Exception as e:
