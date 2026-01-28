@@ -76,6 +76,8 @@ def insert_doc(pnumber:str,file_name: str,  file_type: str, file) -> dict | None
 def insert_url(pnumber:str,url:str) -> dict | None:
     collection="user_data"
     data=web_scraper(url)
+    if not data:
+        return None
     chunks = data_extractor(data)
     print("length of chunks:", len(chunks))
     current_time = time.time()

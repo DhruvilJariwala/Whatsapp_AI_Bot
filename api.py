@@ -57,10 +57,16 @@ def verify(request: Request):
     return JSONResponse(content="Verification failed", status_code=403)
 
 @app.post("/upload")
-async def ask(pnumber: str = Form(...),file: UploadFile |  None = File(None),url: str | None = Form(None)):
+async def ask(pnumber: str = Form(...),file: UploadFile = File(None),url: str = Form(None)):
     if not file and not url:
         raise HTTPException(status_code=422,detail="Either file or url must be provided (or both).")
-    upload(pnumber,file=file,url=url)
+    status=upload(pnumber,file=file,url=url)
+    if status == 200:
+        return JSONResponse(content="Success",status_code=200)
+    elif status == 400:
+        return JSONResponse(content="Unsupported file format!!!", status_code=400)
+    else:
+        raise HTTPException(detail="There was an error inserting Data or url is Invalid", status_code=400)
 
 @app.post("/webhook")
 async def incoming_msg(request: Request):

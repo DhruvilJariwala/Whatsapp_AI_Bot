@@ -1,5 +1,5 @@
 from fastapi.responses import JSONResponse
-from fastapi import HTTPException,Request
+from fastapi import Request
 import datetime
 from services.db.milvs_services import insert_doc,insert_url
 import hashlib
@@ -17,18 +17,18 @@ def upload(number:str,file=None,url=None):
         f_name = file_name.split(".")[0]    
         print(f"File Extension: {file_extension}")
         if file_extension not in allowed_extensions:
-            return JSONResponse(content="Unsupported file format!!!", status_code=400)
+            return 400
         response = insert_doc(pnumber=number,file_name=f_name, file_type=file_extension, file=file)
         if response:
-            return JSONResponse(content="success", status_code=200)
+            return 200
         else:
-            raise HTTPException(detail="There was an error inserting Data", status_code=400)
+            return 4001
     elif url and not file:
         response=insert_url(pnumber=number,url=url)
         if response:
-            return JSONResponse(content="success", status_code=200)
+            return 200
         else:
-            raise HTTPException(detail="There was an error inserting Data", status_code=400)
+            return 4001
     else:
         file_name = file.filename
         allowed_extensions = ["pdf"]
@@ -36,13 +36,13 @@ def upload(number:str,file=None,url=None):
         f_name = file_name.split(".")[0]    
         print(f"File Extension: {file_extension}")
         if file_extension not in allowed_extensions:
-            return JSONResponse(content="Unsupported file format!!!", status_code=400)
+            return 400
         doc_response = insert_doc(pnumber=number,file_name=f_name, file_type=file_extension, file=file)
         url_response= insert_url(pnumber=number,url=url)
         if doc_response and url_response:
-            return JSONResponse(content="success", status_code=200)
+            return 200
         else:
-            return HTTPException(detail="There was an error inserting Data", status_code=400)
+            return 4001
         
 def fetch_data(data):
     entry = data.get("entry", [{}])[0]
