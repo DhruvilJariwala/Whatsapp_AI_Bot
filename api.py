@@ -63,7 +63,7 @@ async def ask(pnumber: str = Form(...),file: UploadFile = File(None),url: str = 
     elif status == 400:
         return JSONResponse(content="Unsupported file format!!!", status_code=400)
     else:
-        raise HTTPException(detail="There was an error inserting Data", status_code=400)
+        raise HTTPException(detail="There was an error inserting Data or url is Invalid", status_code=400)
 
 
 @app.post("/webhook")
