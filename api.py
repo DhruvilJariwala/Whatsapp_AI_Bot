@@ -11,6 +11,7 @@ import asyncio
 from services.db.redis_helper import check_state,get_counter,get_id,send_human_msg,close_ticket,connected_clients
 from utils.helper import upload,msg_send,fetch_data,verify_signature
 from services.ai.llm_engine import mongo_worker,ai_worker,ai_queue
+from services.db.milvs_services import delete_data
 
 load_dotenv()
 
@@ -59,7 +60,7 @@ async def ask(pnumber: str = Form(...),file: UploadFile = File(None),url: str = 
         raise HTTPException(status_code=422,detail="Either file or url must be provided (or both).")
     status=upload(pnumber,file=file,url=url)
     if status == 200:
-        return JSONResponse(content="Success",status_code=200)
+        return JSONResponse(content="Successfully Uploaded",status_code=200)
     elif status == 400:
         return JSONResponse(content="Unsupported file format!!!", status_code=400)
     else:
@@ -133,3 +134,16 @@ def ticket(data:dict=Body(...)):
          return JSONResponse(content="OK",status_code=200)
      else:
          return JSONResponse(content="Redis Error",status_code=400)
+     
+@app.post("/delete")
+def delete_file(data:dict=Body(...)):
+    number=data.get("number")
+    file_name=data.get("file_name")
+    url= data.get("url")
+    if not file_name and not url:
+        raise HTTPException(status_code=422,detail="Either file or url must be provided (or both).")
+    result=delete_data(number=number,file_name=file_name,url=url)
+    if result=="Data Deleted":
+        return JSONResponse(content="Data Successfully Deleted",status_code=200)
+    elif result=="Data not Found":
+        return JSONResponse(content="Data Not Found",status_code=404)

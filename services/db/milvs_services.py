@@ -137,3 +137,34 @@ def search(query: str) -> str:
         print("No Context Passed")
         return None
 
+def delete_data(number:str=None,file_name:str=None,url:str=None):
+    prefix_file=f"{number}_@_{file_name}_@_"
+    expr_file=f"id like '{prefix_file}%'"
+    prefix_url=f"{number}_@_{url}_@_"
+    expr_url=f"id like '{prefix_url}%'"
+    if file_name and not url:
+        result=milvus_client.delete(collection_name="user_data",filter=expr_file)
+        delete_count=result.get("delete_count")
+        if delete_count==0:
+            return "Data not Found"
+        elif delete_count>0:
+            print(f"{prefix_file} Dropped")
+            return "Data Deleted"
+    elif url and not file_name:
+        result=milvus_client.delete(collection_name="user_data",filter=expr_url)
+        delete_count=result.get("delete_count")
+        if delete_count==0:
+            return "Data not Found"
+        elif delete_count>0:
+            print(f"{prefix_url} Dropped")
+            return "Data Deleted"
+    else:
+        file_result=milvus_client.delete(collection_name="user_data",filter=expr_file)
+        file_delete_count=file_result.get("delete_count")
+        url_result=milvus_client.delete(collection_name="user_data",filter=expr_url)
+        url_delete_count=url_result.get("delete_count")    
+        if file_delete_count==0 and url_delete_count==0:
+            return "Data not Found"
+        else:
+            print(f"{prefix_file} and {prefix_url} Dropped")
+            return "Data Deleted"
