@@ -135,7 +135,7 @@ def ticket(data:dict=Body(...)):
      else:
          return JSONResponse(content="Redis Error",status_code=400)
      
-@app.post("/delete")
+@app.delete("/delete")
 def delete_file(data:dict=Body(...)):
     number=data.get("number")
     file_name=data.get("file_name")
