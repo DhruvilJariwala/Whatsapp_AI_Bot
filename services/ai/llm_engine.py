@@ -60,59 +60,40 @@ async def ask_ai(reciver:str,query:str,sender:str,reciver_id:str):
             print(f"Restructure Query:{query}")
             
     res=check_history(f"{reciver}_@_{sender}")
-    if res is None:
-        context=search(query)
-        prompt=response_prompt(context,query)
-        chat_history=[{"role":"user","content":prompt}]
-        generation = get_llm().invoke(chat_history)
-        chat_history.pop()
-        response = generation.content
-        try:
-            chat_history.append({"user":query,"timestamp":str(datetime.datetime.now()),"SenderID":sender,"answeredby":check_state(f"{reciver}_@_{sender}")}) 
-            res=requests.post(url=f"{os.getenv('BASE_URL')}{reciver_id}/messages",json=msg_send(sender=sender,response=response),headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {os.getenv('ACCESS_TOKEN')}"
-            })
-            chat_history.append({"assistant":response,"timestamp":str(datetime.datetime.now()),"SenderID":sender,"answeredby":check_state(f"{reciver}_@_{sender}")})                       
-            print("Sucessfully Send")
-        except Exception as e:
-            print(f"ERROR: {e}")
-        count=int(get_counter(f"{reciver}_@_{sender}"))
-        count+=2
-        append_history(f"{reciver}_@_{sender}",chat_history,count)
-    else:
-        history=json.loads(res)
-        hist=[]
-        for items in history:
+    chat_history=list()
+    llm_history=list()
+    if res:
+        chat_history=json.loads(res)
+        for items in chat_history:
             if "user" in items:
-                hist.append({"role":"user","content":items["user"]})
+                llm_history.append({"role":"user","content":items["user"]})
             elif "assistant" in items:
-                hist.append({"role":"assistant","content":items["assistant"]})
-        context=search(query)
-        prompt=response_prompt(context,query)
-        hist.append({"role":"user","content":prompt})
-        generation = get_llm().invoke(hist)
-        response = generation.content
-        try:
-            history.append({"user":query,"timestamp":str(datetime.datetime.now()),"SenderID":sender,"answeredby":check_state(f"{reciver}_@_{sender}")})
-            res=requests.post(url=f"{os.getenv('BASE_URL')}{reciver_id}/messages",json=msg_send(sender=sender,response=response),headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {os.getenv('ACCESS_TOKEN')}"
-            })
-            history.append({"assistant":response,"timestamp":str(datetime.datetime.now()),"SenderID":sender,"answeredby":check_state(f"{reciver}_@_{sender}")})
-            print("Sucessfully Send")
-        except Exception as e:
-            print(f"ERROR: {e}")
-        history=deque(history,20)
-        counter=int(get_counter(f"{reciver}_@_{sender}"))
-        counter+=2
-        if counter==20:
-            mongo_history=copy.deepcopy(history)
-            mongo_queue.put((mongo_history,reciver))
-            counter=0
-        append_history(f"{reciver}_@_{sender}",list(history),counter=counter)
+                llm_history.append({"role":"assistant","content":items["assistant"]})
+    context=search(query)
+    prompt=response_prompt(context,query)
+    llm_history.append({"role":"user","content":prompt})
+    generation = get_llm().invoke(llm_history)
+    response = generation.content
+    try:
+        chat_history.append({"user":query,"timestamp":str(datetime.datetime.now()),"SenderID":sender,"answeredby":check_state(f"{reciver}_@_{sender}")}) 
+        res=requests.post(url=f"{os.getenv('BASE_URL')}{reciver_id}/messages",json=msg_send(sender=sender,response=response),headers={
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {os.getenv('ACCESS_TOKEN')}"
+        })
+        chat_history.append({"assistant":response,"timestamp":str(datetime.datetime.now()),"SenderID":sender,"answeredby":check_state(f"{reciver}_@_{sender}")})                       
+        print("Sucessfully Send")
+    except Exception as e:
+        print(f"ERROR: {e}")
+    chat_history=deque(chat_history,20)
+    counter=int(get_counter(f"{reciver}_@_{sender}"))
+    counter+=2
+    if counter==20:
+        mongo_history=copy.deepcopy(chat_history)
+        mongo_queue.put((mongo_history,reciver))
+        counter=0
+    append_history(f"{reciver}_@_{sender}",list(chat_history),counter=counter)
 
-def tool_calling(msg:str,receiver:str,sender:str,reciver_id:str):
+def tool_calling(msg:str,receiver:str,sender:str,reciver_id:str="",toolused:str="Whatsapp"):
     tool=llm_with_tool(followup_handler,switch_state) 
     sprompt=tool_prompt(msg)
     res=check_history(f"{receiver}_@_{sender}")
@@ -131,14 +112,60 @@ def tool_calling(msg:str,receiver:str,sender:str,reciver_id:str):
     if(tool_res.tool_calls):
         if(tool_res.tool_calls[0]['name']=="switch_state"):
             change_state(f"{receiver}_@_{sender}")
-            try:
-                res = requests.post(url=f"{os.getenv('BASE_URL')}{reciver_id}/messages",json=msg_send(sender=sender,response="A Support representive will soon get back to you"),headers={
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {os.getenv('ACCESS_TOKEN')}"})
-            except Exception as e:
-                print(f"Error sending default Human msg: {e}")
-            return "Human"
+            if toolused=="Whatsapp":
+                try:
+                    res = requests.post(url=f"{os.getenv('BASE_URL')}{reciver_id}/messages",json=msg_send(sender=sender,response="A Support representive will soon get back to you"),headers={
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {os.getenv('ACCESS_TOKEN')}"})
+                except Exception as e:
+                    print(f"Error sending default Human msg: {e}")
+                return "Human"
+            else:
+                return "A Support representive will soon get back to you"
         elif(tool_res.tool_calls[0]['name']=="followup_handler"):
             text=tool_res.tool_calls[0]['args']['query']
             return text
     return None
+
+async def chatbot_ai(org_number:str,deviceid:str,query:str):
+    tool_res=tool_calling(query,receiver=org_number,sender=deviceid,toolused="Chatbot")
+    if tool_res:
+        if tool_res=="A Support representive will soon get back to you":
+            res=check_history(f"{org_number}_@_{deviceid}")
+            chat_history=json.loads(res)
+            counter=int(get_counter(f"{org_number}_@_{deviceid}"))
+            counter+=1
+            chat_history.append({"user":query,"timestamp":str(datetime.datetime.now()),"SenderID":deviceid,"answeredby":check_state(f"{org_number}_@_{deviceid}")})
+            append_history(f"{org_number}_@_{deviceid}",chat_history=chat_history,counter=counter)
+            await send_history(f"{org_number}_@_{deviceid}")
+            print("Switch to Human")
+            return tool_res
+        else:
+            query=tool_res
+            print(f"Restructure Query:{query}")
+    res=check_history(f"{org_number}_@_{deviceid}")
+    chat_history=list()
+    llm_history=list()
+    if res:
+        chat_history=json.loads(res)
+        for items in chat_history:
+            if "user" in items:
+                llm_history.append({"role":"user","content":items["user"]})
+            elif "assistant" in items:
+                llm_history.append({"role":"assistant","content":items["assistant"]})
+    context=search(query)
+    prompt=response_prompt(context,query)
+    llm_history.append({"role":"user","content":prompt})
+    generation = get_llm().invoke(llm_history)
+    response = generation.content
+    chat_history.append({"user":query,"timestamp":str(datetime.datetime.now()),"SenderID":deviceid,"answeredby":check_state(f"{org_number}_@_{deviceid}")}) 
+    chat_history.append({"assistant":response,"timestamp":str(datetime.datetime.now()),"SenderID":deviceid,"answeredby":check_state(f"{org_number}_@_{deviceid}")})                       
+    chat_history=deque(chat_history,20)
+    counter=int(get_counter(f"{org_number}_@_{deviceid}"))
+    counter+=2
+    if counter==20:
+        mongo_history=copy.deepcopy(chat_history)
+        mongo_queue.put((mongo_history,org_number))
+        counter=0
+    append_history(f"{org_number}_@_{deviceid}",list(chat_history),counter=counter)
+    return response

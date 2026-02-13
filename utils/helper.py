@@ -14,8 +14,7 @@ def upload(number:str,file=None,url=None):
         file_name = file.filename
         allowed_extensions = ["pdf"]
         file_extension = file_name.split(".")[-1]
-        f_name = file_name.split(".")[:-1]
-        f_name = ".".join(f_name)
+        f_name = file_name.split(".pdf")[0]
         print(f"File Extension: {file_extension}")
         if file_extension not in allowed_extensions:
             return 400

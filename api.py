@@ -7,10 +7,11 @@ from dotenv import load_dotenv
 import requests
 import datetime
 import asyncio
+import json
 
-from services.db.redis_helper import check_state,get_counter,get_id,send_human_msg,close_ticket,connected_clients
+from services.db.redis_helper import check_state,get_counter,get_id,send_human_msg,close_ticket,connected_clients,check_history,append_history
 from utils.helper import upload,msg_send,fetch_data,verify_signature
-from services.ai.llm_engine import mongo_worker,ai_worker,ai_queue
+from services.ai.llm_engine import mongo_worker,ai_worker,ai_queue,chatbot_ai
 from services.db.milvs_services import delete_data
 
 load_dotenv()
@@ -111,19 +112,23 @@ async def human(data:dict = Body(...)):
     if not response:
         print("Redis Connection Error")
         return JSONResponse(content="OK",status_code=200)
-    history=[]
+    history=check_history(f"{receiver_number}_@_{sender}")
+    history=json.loads(history)
     history.append({"human":msg,"timestamp":str(datetime.datetime.now()),"SenderID":sender,"answeredby":check_state(f"{receiver_number}_@_{sender}")})  
     count=get_counter(f"{receiver_number}_@_{sender}")
     count=int(count)+1
-    try:
-        res = requests.post(url=f"{os.getenv('BASE_URL')}{response}/messages",json=msg_send(sender=sender,response=msg),headers={
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {os.getenv('ACCESS_TOKEN')}"})
-        await send_human_msg(f"{receiver_number}_@_{sender}",chat_history=history,counter=count)
-        return JSONResponse(content="OK",status_code=200)
-    except Exception as e:
-        print(f"Error sending Human msg {e}")
-        return JSONResponse(content="OK",status_code=400)
+    if response=="Chatbot":
+        await send_human_msg(f"{receiver_number}_@_{sender}",chat_history=history,counter=count)    
+    else:
+        try:
+            res = requests.post(url=f"{os.getenv('BASE_URL')}{response}/messages",json=msg_send(sender=sender,response=msg),headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {os.getenv('ACCESS_TOKEN')}"})
+            append_history(f"{receiver_number}_@_{sender}",chat_history=history,counter=count)
+            return JSONResponse(content="OK",status_code=200)
+        except Exception as e:
+            print(f"Error sending Human msg {e}")
+            return JSONResponse(content="OK",status_code=400)
     
 @app.post("/ticket")
 def ticket(data:dict=Body(...)):
@@ -147,3 +152,31 @@ def delete_file(data:dict=Body(...)):
         return JSONResponse(content="Data Successfully Deleted",status_code=200)
     elif result=="Data not Found":
         return JSONResponse(content="Data Not Found",status_code=404)
+
+
+@app.post("/chatbot")
+async def chatbot(data:dict=Body(...)):
+    deviceid=data.get("deviceid")
+    org_number=data.get("org_number")
+    msg=data.get("msg")
+    state=check_state(f"{org_number}_@_{deviceid}",reciever="Chatbot")
+    if not state:
+        print("Redis Connection Error")
+        return JSONResponse(content="OK",status_code=200)    
+    if state=="AI":
+        response=chatbot_ai(org_number=org_number,deviceid=deviceid,query=msg)
+        return response
+    elif state=="Human":
+        history=[]
+        history.append({"user":msg,"timestamp":str(datetime.datetime.now()),"SenderID":deviceid,"answeredby":check_state(f"{org_number}_@_{deviceid}")})  
+        count=get_counter(f"{org_number}_@_{deviceid}")
+        count=int(count)+1
+        await send_human_msg(f"{org_number}_@_{deviceid}",chat_history=history,counter=count)
+    return JSONResponse(content="OK",status_code=200)
+
+@app.post("/chatbothistory")
+def chatbot(data:dict=Body(...)):
+    org_number=data.get("org_number")
+    deviceid= data.get("deviceid")
+    history=check_history(f"{org_number}_@_{deviceid}")
+    return history
