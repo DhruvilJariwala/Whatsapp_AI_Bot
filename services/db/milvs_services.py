@@ -103,7 +103,7 @@ def insert_url(pnumber:str,url:str) -> dict | None:
     print("Response from Milvus:", response)
     return response if response else None
 
-def search(query: str) -> str:
+def search(query: str,number:str) -> str:
     collection="user_data"
     search_query = search_embeddings(query=query)
 
@@ -122,6 +122,7 @@ def search(query: str) -> str:
         data=[search_query], 
         search_params=search_params,
         limit=5, 
+        filter=f"id LIKE '{number}%'",
         output_fields=["text", "id"]
     )[0]
 
